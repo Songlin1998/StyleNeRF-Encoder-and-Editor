@@ -149,8 +149,6 @@ def _main(input_folder, output_folder, start_frame, end_frame, run_name,
         wandb.init(project=paths_config.pti_results_keyword, reinit=True, name=global_config.run_name, config=config)
     files = make_dataset(input_folder)
     files = files[start_frame:end_frame]
-
-    # writer = SummaryWriter(log_dir=output_folder)
     
     print(f'Number of images: {len(files)}')
     image_size = 1024
@@ -165,42 +163,10 @@ def _main(input_folder, output_folder, start_frame, end_frame, run_name,
     coach = Coach(ds, use_wandb)
 
     print('start pivot tuning')
-    # ws = coach.train()
     w_pivots, cm_pivots = coach.train()
     print('finish pivot tuning')
     
     save_tuned_G(coach.G, w_pivots, cm_pivots, quads, global_config.run_name)
-    
-    # print('editing')
-    # # load the styleflow
-    # prior_geo = cnf(512, '512-512-512-512-512', 6, 4, 7)
-    # prior_app = cnf(512, '512-512-512-512-512', 6, 4, 14)
-    # prior_geo.load_state_dict(torch.load('/hd4/yangsonglin-3D/StyleFlow/trained_model_right_1/modellarge10k_000000_11_geo.pt'))
-    # prior_geo.eval().cuda()
-    # prior_app.load_state_dict(torch.load('/hd4/yangsonglin-3D/StyleFlow/trained_model_right_1/modellarge10k_001000_10_app.pt'))
-    # prior_app.eval().cuda()
-
-    # attributes = np.load(f'/hd4/yangsonglin-3D/STIT/datasets/attributes_michael.npy')
-
-    # for q in tqdm(range(w_pivots.shape[0])):
-    #     at = torch.FloatTensor(1,6).cuda()
-    #     # age:49
-    #     at[0,0] = attributes[q,0]
-    #     # beard :0.1
-    #     at[0,1] = attributes[q,1]
-    #     # gender(male:0,female:1)
-    #     at[0,2] = attributes[q,2]
-    #     # glasses:0
-    #     at[0,3] = 1
-    #     # baldness:0.56
-    #     at[0,4] = attributes[q,4]
-    #     # smile:0.0
-    #     at[0,5] = attributes[q,5]
-    #     approx21_geo_edit, _ = prior_geo(w_pivots[q,:7,:].unsqueeze(0), at, torch.zeros(1, 7, 1).cuda(),True)
-    #     # approx21_app_edit, _ = prior_app(w_pivots[q,7:,:].unsqueeze(0), at, torch.zeros(1, 14, 1).cuda(),True)
-    #     # w_pivots[q,7:,:] = torch.cat((approx21_geo_edit,approx21_app_edit),1)
-    #     w_pivots[q,:7,:] = approx21_geo_edit[0,:,:]
-    
 
     inverse_transforms = [
         calc_alignment_coefficients(quad + 0.5, [[0, 0], [0, image_size], [image_size, image_size], [image_size, 0]])
@@ -213,13 +179,9 @@ def _main(input_folder, output_folder, start_frame, end_frame, run_name,
     os.makedirs(output_folder, exist_ok=True)
     with open(os.path.join(output_folder, 'opts.json'), 'w') as f:
         json.dump(config, f)
-
-    # print('start stiching tuning')
+   
     segmentation_model = models.seg_model_2.BiSeNet(19).eval().cuda().requires_grad_(False)
     segmentation_model.load_state_dict(torch.load(paths_config.segmentation_model_path))
-    # parameters = list(stit_gen.parameters())
-    # stit_optimizer = torch.optim.Adam(parameters,betas=(hyperparameters.pti_adam_beta1, 0.999), 
-    #                                                 lr=hyperparameters.pti_learning_rate)
 
     for i, (coeffs, crop, orig_image, w, cm) in tqdm(
             enumerate(zip(inverse_transforms, crops, orig_images, w_pivots, cm_pivots)), total=len(w_pivots)):
@@ -247,36 +209,6 @@ def _main(input_folder, output_folder, start_frame, end_frame, run_name,
         save_image(paste_image(coeffs, gen_img, orig_image), output_folder, 'gen_img', i)
         save_image(paste_image(coeffs, ori_img, orig_image), output_folder, 'ori_img', i)
         save_image(paste_image(coeffs, background_mask_img, orig_image), output_folder, 'background_mask_img', i)
-
-    # for i, (coeffs, crop, orig_image, w, cm) in tqdm(
-    #         enumerate(zip(inverse_transforms, crops, orig_images, w_pivots, cm_pivots)), total=len(w_pivots)):
-    #     w = w[None]
-    #     cm = cm[None]
-    #     with torch.no_grad():
-            
-    #         batch = w.shape[0]
-    #         c_samples = cm.to(global_config.device)
-    #         # naive inversion 的结果
-    #         camera_matrices = ori_gen.synthesis.get_camera(batch, global_config.device, mode=c_samples)
-    #         naive = ori_gen.get_final_output(styles=w, camera_matrices=camera_matrices)
-    #         # PIT fine-tuning 的结果
-    #         camera_matrices = pit_gen.synthesis.get_camera(batch, global_config.device, mode=c_samples)
-    #         pivot = pit_gen.get_final_output(styles=w, camera_matrices=camera_matrices)
-    #         # border fine-tuning 的结果
-            # camera_matrices = stit_gen.synthesis.get_camera(batch, global_config.device, mode=c_samples)
-            # stit = stit_gen.get_final_output(styles=w, camera_matrices=camera_matrices)
-            
-
-            # naive = to_pil_image(naive)
-            # pivot = to_pil_image(pivot)
-            # stit = to_pil_image(stit)
-
-        # save_image(naive, output_folder, 'naive', i)
-        # save_image(inversion, output_folder, 'inversion', i)
-        # save_image(paste_image(coeffs, crop, orig_image), output_folder, 'origin', i)
-        # save_image(paste_image(coeffs, naive, orig_image), output_folder, 'naive', i)
-        # save_image(paste_image(coeffs, pivot, orig_image), output_folder, 'pivot', i)
-        # save_image(paste_image(coeffs, stit, orig_image), output_folder, 'stit', i)
 
 if __name__ == '__main__':
     main()
